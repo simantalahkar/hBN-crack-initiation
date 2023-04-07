@@ -1,0 +1,183 @@
+####################### h-BN model layer extep ILP aniso npt nvt tensile##########################
+
+## Simulation setup
+
+units           metal
+newton          on
+atom_style      full
+dimension       3
+boundary        p p p
+#processors      * * 1     # domain decomposition over x and y
+
+## Box and atom creation
+
+read_data	hBN.in.data
+change_box all triclinic
+
+mass           1 10.811
+mass           2 14.0067
+
+## Potential
+
+pair_style  hybrid/overlay  extep  ilp/graphene/hbn 16.0 coul/shield 16.0 1
+
+pair_coeff  * * extep          BN_new_formatted.extep   B N  
+
+pair_coeff  * * ilp/graphene/hbn BNCH.ILP  B N 
+
+pair_coeff  1 1 coul/shield 0.70
+pair_coeff  1 2 coul/shield 0.69498201415576216335
+pair_coeff  2 2 coul/shield 0.69
+
+
+## Simulation setup
+
+# Neighbor update settings
+neighbor        0.5 bin
+neigh_modify    every 4
+neigh_modify    delay 0
+neigh_modify    check yes page 800000 one 80000
+
+
+
+################
+################# simulation set up
+timestep 0.0025
+reset_timestep	0
+
+
+compute myPress all pressure NULL virial
+
+variable vl0 equal "lx"
+variable vl1 equal "ly"
+variable vl2 equal "lz"
+variable vetotal equal "etotal"
+variable vpe equal "pe"
+variable vtemp equal "temp"
+variable vpress equal "press"
+variable vvol equal "vol"
+variable vmyPress equal c_myPress
+variable vpx equal "pxx"
+variable vpy equal "pyy"
+variable vpz equal "pzz"
+variable vstep equal "step"
+
+thermo 2000
+thermo_style custom step etotal lx ly lz pe pxx pyy pzz temp cpuremain
+
+#velocity all create 1 584651 dist gaussian
+
+
+
+
+##################################### tensile #####################
+reset_timestep	0
+
+# Store final cell length for strain calculations
+variable tmp equal "lx"
+variable L0 equal ${tmp}
+variable tmp equal "ly"
+variable L1 equal ${tmp}
+variable tmp equal "lz"
+variable L2 equal ${tmp}
+variable tmp equal "xz"
+variable T3 equal ${tmp}
+variable tmp equal "yz"
+variable T4 equal ${tmp}
+variable tmp equal "xy"
+variable T5 equal ${tmp}
+
+print "Pretensile x Length, L0: ${L0}"
+print "Pretensile y Length, L1: ${L1}"
+print "Pretensile z Length, L2: ${L2}"
+print "Pretensile xz tilt, T3: ${T3}"
+print "Pretensile yz tilt, T4: ${T4}"
+print "Pretensile xy tilt, T5: ${T5}"
+
+
+
+fix		1 all npt temp 1 1 $(100.0*dt) z 0.0 0.0 $(1000.0*dt)
+variable srate equal 1.0e10
+variable srate1 equal "v_srate / 1.0e14"
+
+fix		2 all deform 1 y erate ${srate1} units box remap x #flip no
+
+compute cyforce all reduce sum fy
+compute cxforce all reduce sum fx
+compute czforce all reduce sum fz
+
+
+# Output strain and stress info to file
+# for units metal, pressure is in [bars] = 100 [kPa] = 1/10000 [GPa]
+# p2, p3, p4 are in GPa
+variable strain equal "(lx - v_L0)/v_L0"
+variable strain1 equal "(ly - v_L1)/v_L1"
+variable strain2 equal "(lz - v_L2)/v_L2"
+variable strain3 equal "xz"
+variable strain4 equal "yz"
+variable strain5 equal "xy"
+variable xstrain equal "v_strain"
+variable xstress equal "-pxx/10000"
+variable ystress equal "-pyy/10000"
+variable zstress equal "-pzz/10000"
+variable xystress equal "-pxy/10000"
+variable xzstress equal "-pxz/10000"
+variable yzstress equal "-pyz/10000"
+variable ystrain equal "v_strain1"
+variable zstrain equal "v_strain2"
+variable xzstrain equal "v_strain3"
+variable yzstrain equal "v_strain4"
+variable xystrain equal "v_strain5"
+variable yforce equal "c_cyforce"
+variable xforce equal "c_cxforce"
+variable zforce equal "c_czforce"
+
+
+
+
+
+###################### fixes for data output
+
+fix def0 all print 4000 "${vl0} ${vl1} ${vl2} ${vetotal} ${vpe} ${vvol} ${vtemp} ${vpress} ${vmyPress} ${vstep}" file hBN_thermo.def0.txt screen no
+
+fix def1 all print 4000 "${xstrain} ${xstress} ${ystress} ${zstress} ${ystrain} ${zstrain} ${xystress} ${xzstress} ${yzstress} ${xzstrain} ${yzstrain} ${xystrain} ${yforce} ${xforce} ${zforce} ${vstep}" file hBN_tensile.def1.txt screen no
+
+#fix def_stressfull all ave/time 50 1 50  v_vsbodyi[*] v_vsboundaryi[*] v_vsboundaryionly[*] file stressfull.txt mode vector
+
+#fix def_potential all ave/time 50 1 50  c_potbody[*] c_potbodyi[*] c_potboundary[*] c_potboundaryi[*] c_potboundaryionly[*] file potential.txt #mode vector
+
+
+######################### dumps and runs
+
+dump  1 all atom 4000 ./hBNtensile.*.atom
+dump_modify   1 sort id
+
+run 800000 start 0 stop 1000000 #every 100 "write_data hBN.*.tensile.data nocoeff" 
+
+unfix def0
+
+unfix def1
+
+undump 1
+
+fix def0 all print 1 "${vl0} ${vl1} ${vl2} ${vetotal} ${vpe} ${vvol} ${vtemp} ${vpress} ${vmyPress} ${vstep}" append hBN_thermo.def0.txt screen no
+
+fix def1 all print 1 "${xstrain} ${xstress} ${ystress} ${zstress} ${ystrain} ${zstrain} ${xystress} ${xzstress} ${yzstress} ${xzstrain} ${yzstrain} ${xystrain} ${yforce} ${xforce} ${zforce} ${vstep}" append hBN_tensile.def1.txt screen no
+
+dump  1 all atom 1 ./hBNtensile.*.atom
+dump_modify   1 sort id
+
+run 1000000 upto start 0 stop 1000000 every 100 "write_data hBN.*.tensile.data nocoeff" 
+
+
+
+
+
+
+
+
+
+
+
+
+

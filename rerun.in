@@ -1,0 +1,428 @@
+####################### h-BN model layer extep ILP aniso npt nvt tensile##########################
+
+## Simulation setup
+
+units           metal
+newton          on
+atom_style      full
+dimension       3
+boundary        p p p
+#processors      * * 1     # domain decomposition over x and y
+
+## Box and atom creation
+
+read_data	hBN.in.data
+change_box all triclinic
+
+mass           1 10.811
+mass           2 14.0067
+
+## Potential
+
+pair_style  hybrid/overlay  extep  ilp/graphene/hbn 16.0 coul/shield 16.0 1
+
+pair_coeff  * * extep          BN_new_formatted.extep   B N  
+
+pair_coeff  * * ilp/graphene/hbn BNCH.ILP  B N 
+
+pair_coeff  1 1 coul/shield 0.70
+pair_coeff  1 2 coul/shield 0.69498201415576216335
+pair_coeff  2 2 coul/shield 0.69
+
+
+## Simulation setup
+
+# Neighbor update settings
+neighbor        0.5 bin
+neigh_modify    every 4
+neigh_modify    delay 0
+neigh_modify    check yes page 800000 one 80000
+
+
+
+################
+################# simulation set up
+timestep 0.0025
+reset_timestep	0
+
+
+compute myPress all pressure NULL virial
+
+variable vl0 equal "lx"
+variable vl1 equal "ly"
+variable vl2 equal "lz"
+variable vetotal equal "etotal"
+variable vpe equal "pe"
+variable vtemp equal "temp"
+variable vpress equal "press"
+variable vvol equal "vol"
+variable vmyPress equal c_myPress
+variable vpx equal "pxx"
+variable vpy equal "pyy"
+variable vpz equal "pzz"
+variable vstep equal "step"
+
+thermo 2000
+thermo_style custom step etotal lx ly lz pe pxx pyy pzz temp cpuremain
+
+#velocity all create 1 584651 dist gaussian
+
+
+
+
+##################################### tensile #####################
+reset_timestep	0
+
+# Store final cell length for strain calculations
+variable tmp equal "lx"
+variable L0 equal ${tmp}
+variable tmp equal "ly"
+variable L1 equal ${tmp}
+variable tmp equal "lz"
+variable L2 equal ${tmp}
+variable tmp equal "xz"
+variable T3 equal ${tmp}
+variable tmp equal "yz"
+variable T4 equal ${tmp}
+variable tmp equal "xy"
+variable T5 equal ${tmp}
+
+print "Pretensile x Length, L0: ${L0}"
+print "Pretensile y Length, L1: ${L1}"
+print "Pretensile z Length, L2: ${L2}"
+print "Pretensile xz tilt, T3: ${T3}"
+print "Pretensile yz tilt, T4: ${T4}"
+print "Pretensile xy tilt, T5: ${T5}"
+
+################################################  RERUN
+
+read_dump hBNtensile.814673.atom 814673 x y z box yes replace yes format native
+
+
+#######################################################
+
+
+compute cyforce all reduce sum fy
+compute cxforce all reduce sum fx
+compute czforce all reduce sum fz
+
+
+# Output strain and stress info to file
+# for units metal, pressure is in [bars] = 100 [kPa] = 1/10000 [GPa]
+# p2, p3, p4 are in GPa
+variable strain equal "(lx - v_L0)/v_L0"
+variable strain1 equal "(ly - v_L1)/v_L1"
+variable strain2 equal "(lz - v_L2)/v_L2"
+variable strain3 equal "xz"
+variable strain4 equal "yz"
+variable strain5 equal "xy"
+variable xstrain equal "v_strain"
+variable xstress equal "-pxx/10000"
+variable ystress equal "-pyy/10000"
+variable zstress equal "-pzz/10000"
+variable xystress equal "-pxy/10000"
+variable xzstress equal "-pxz/10000"
+variable yzstress equal "-pyz/10000"
+variable ystrain equal "v_strain1"
+variable zstrain equal "v_strain2"
+variable xzstrain equal "v_strain3"
+variable yzstrain equal "v_strain4"
+variable xystrain equal "v_strain5"
+variable yforce equal "c_cyforce"
+variable xforce equal "c_cxforce"
+variable zforce equal "c_czforce"
+
+compute cadf all adf 18000 * * * 0.0 1.665 0.0 1.665 &		
+                       2 1 1 0.0 1.665 0.0 1.665 &
+                       1 2 2 0.0 1.665 0.0 1.665 &
+						ordinate degree
+
+				   
+fix fadf all ave/time 1 1 1 c_cadf[*] file short_rerun.adf mode vector 
+
+compute crdf all rdf 600 cutoff 1.68
+
+fix frdf all ave/time 1 1 1 c_crdf[*] file short_rerun.rdf mode vector 
+
+compute cvoro all voronoi/atom
+compute        peratom all stress/atom NULL virial
+compute        potatom all pe/atom
+
+variable atmxstrs atom c_peratom[1]/(c_cvoro[1]*10000)
+variable atmystrs atom c_peratom[2]/(c_cvoro[1]*10000)
+variable atmzstrs atom c_peratom[3]/(c_cvoro[1]*10000)
+variable atmxystrs atom c_peratom[4]/(c_cvoro[1]*10000)
+variable atmxzstrs atom c_peratom[5]/(c_cvoro[1]*10000)
+variable atmyzstrs atom c_peratom[6]/(c_cvoro[1]*10000)
+variable vvoro atom c_cvoro[1]
+#variable atmpstrs atom "(v_atmxstrs + v_atmystrs + v_atmzstrs)/(3*v_vvoro*10000)"
+variable atmpstrs atom "(c_peratom[1] + c_peratom[2] + c_peratom[3])/(3*c_cvoro[1]*10000)"
+
+
+
+######################### dumps and runs
+
+
+#fix def0 all print 1 "${vl0} ${vl1} ${vl2} ${vetotal} ${vpe} ${vvol} ${vtemp} ${vpress} ${vmyPress} ${vstep}" append hBN_thermo_rerun.def0.txt screen no
+
+#fix def1 all print 1 "${xstrain} ${xstress} ${ystress} ${zstress} ${ystrain} ${zstrain} ${xystress} ${xzstress} ${yzstress} ${xzstrain} ${yzstrain} ${xystrain} ${yforce} ${xforce} ${zforce} ${vstep}" append hBN_tensile_rerun.def1.txt screen no
+
+dump  1 all atom 1 ./hBNrerun.*.atom
+dump_modify   1 sort id
+
+dump  2 all custom 1 ./hBNrerunstress2.*.atom id mol type xs ys zs v_atmxstrs v_atmystrs v_atmzstrs v_atmxystrs v_atmxzstrs v_atmyzstrs c_potatom v_atmpstrs #v_atmxstrsmod v_atmstrssqrtwhole v_atmstrssqrteach v_atmstrsmod
+dump_modify   1 sort id
+
+run 0
+write_data hBN.*.rerun.data nocoeff
+#unfix def0
+#unfix def1
+unfix fadf
+unfix frdf
+
+################################################  RERUN
+
+read_dump hBNtensile.600000.atom 600000 x y z box yes replace yes format native
+
+
+# Output strain and stress info to file
+# for units metal, pressure is in [bars] = 100 [kPa] = 1/10000 [GPa]
+# p2, p3, p4 are in GPa
+variable strain equal "(lx - v_L0)/v_L0"
+variable strain1 equal "(ly - v_L1)/v_L1"
+variable strain2 equal "(lz - v_L2)/v_L2"
+variable strain3 equal "xz"
+variable strain4 equal "yz"
+variable strain5 equal "xy"
+variable xstrain equal "v_strain"
+variable xstress equal "-pxx/10000"
+variable ystress equal "-pyy/10000"
+variable zstress equal "-pzz/10000"
+variable xystress equal "-pxy/10000"
+variable xzstress equal "-pxz/10000"
+variable yzstress equal "-pyz/10000"
+variable ystrain equal "v_strain1"
+variable zstrain equal "v_strain2"
+variable xzstrain equal "v_strain3"
+variable yzstrain equal "v_strain4"
+variable xystrain equal "v_strain5"
+variable yforce equal "c_cyforce"
+variable xforce equal "c_cxforce"
+variable zforce equal "c_czforce"
+
+				   
+fix fadf all ave/time 1 1 1 c_cadf[*] file short_rerun0.15.adf mode vector 
+
+fix frdf all ave/time 1 1 1 c_crdf[*] file short_rerun0.15.rdf mode vector 
+
+
+variable atmxstrs atom c_peratom[1]/(c_cvoro[1]*10000)
+variable atmystrs atom c_peratom[2]/(c_cvoro[1]*10000)
+variable atmzstrs atom c_peratom[3]/(c_cvoro[1]*10000)
+variable atmxystrs atom c_peratom[4]/(c_cvoro[1]*10000)
+variable atmxzstrs atom c_peratom[5]/(c_cvoro[1]*10000)
+variable atmyzstrs atom c_peratom[6]/(c_cvoro[1]*10000)
+variable vvoro atom c_cvoro[1]
+#variable atmpstrs atom "(v_atmxstrs + v_atmystrs + v_atmzstrs)/(3*v_vvoro*10000)"
+variable atmpstrs atom "(c_peratom[1] + c_peratom[2] + c_peratom[3])/(3*c_cvoro[1]*10000)"
+
+
+
+######################### dumps and runs
+
+
+#fix def0 all print 1 "${vl0} ${vl1} ${vl2} ${vetotal} ${vpe} ${vvol} ${vtemp} ${vpress} ${vmyPress} ${vstep}" append hBN_thermo_rerun.def0.txt screen no
+
+#fix def1 all print 1 "${xstrain} ${xstress} ${ystress} ${zstress} ${ystrain} ${zstrain} ${xystress} ${xzstress} ${yzstress} ${xzstrain} ${yzstrain} ${xystrain} ${yforce} ${xforce} ${zforce} ${vstep}" append hBN_tensile_rerun.def1.txt screen no
+
+#dump  1 all atom 1 ./hBNrerun.*.atom
+#dump_modify   1 sort id
+
+#dump  2 all custom 1 ./hBNrerunstress2.*.atom id mol type xs ys zs v_atmxstrs v_atmystrs v_atmzstrs v_atmxystrs v_atmxzstrs v_atmyzstrs c_potatom v_atmpstrs #v_atmxstrsmod v_atmstrssqrtwhole v_atmstrssqrteach v_atmstrsmod
+#dump_modify   1 sort id
+
+
+run 0
+write_data hBN.*.rerun.data nocoeff
+unfix fadf
+unfix frdf
+
+################################################  RERUN
+
+read_dump hBNtensile.400000.atom 400000 x y z box yes replace yes format native
+
+
+#######################################################
+
+# Output strain and stress info to file
+# for units metal, pressure is in [bars] = 100 [kPa] = 1/10000 [GPa]
+# p2, p3, p4 are in GPa
+variable strain equal "(lx - v_L0)/v_L0"
+variable strain1 equal "(ly - v_L1)/v_L1"
+variable strain2 equal "(lz - v_L2)/v_L2"
+variable strain3 equal "xz"
+variable strain4 equal "yz"
+variable strain5 equal "xy"
+variable xstrain equal "v_strain"
+variable xstress equal "-pxx/10000"
+variable ystress equal "-pyy/10000"
+variable zstress equal "-pzz/10000"
+variable xystress equal "-pxy/10000"
+variable xzstress equal "-pxz/10000"
+variable yzstress equal "-pyz/10000"
+variable ystrain equal "v_strain1"
+variable zstrain equal "v_strain2"
+variable xzstrain equal "v_strain3"
+variable yzstrain equal "v_strain4"
+variable xystrain equal "v_strain5"
+variable yforce equal "c_cyforce"
+variable xforce equal "c_cxforce"
+variable zforce equal "c_czforce"
+
+
+				   
+fix fadf all ave/time 1 1 1 c_cadf[*] file short_rerun0.1.adf mode vector 
+
+
+
+variable atmxstrs atom c_peratom[1]/(c_cvoro[1]*10000)
+variable atmystrs atom c_peratom[2]/(c_cvoro[1]*10000)
+variable atmzstrs atom c_peratom[3]/(c_cvoro[1]*10000)
+variable atmxystrs atom c_peratom[4]/(c_cvoro[1]*10000)
+variable atmxzstrs atom c_peratom[5]/(c_cvoro[1]*10000)
+variable atmyzstrs atom c_peratom[6]/(c_cvoro[1]*10000)
+variable vvoro atom c_cvoro[1]
+#variable atmpstrs atom "(v_atmxstrs + v_atmystrs + v_atmzstrs)/(3*v_vvoro*10000)"
+variable atmpstrs atom "(c_peratom[1] + c_peratom[2] + c_peratom[3])/(3*c_cvoro[1]*10000)"
+
+
+
+######################### dumps and runs
+
+
+run 0
+write_data hBN.*.rerun.data nocoeff
+unfix fadf
+################################################  RERUN
+
+read_dump hBNtensile.200000.atom 200000 x y z box yes replace yes format native
+
+
+#######################################################
+
+
+
+# Output strain and stress info to file
+# for units metal, pressure is in [bars] = 100 [kPa] = 1/10000 [GPa]
+# p2, p3, p4 are in GPa
+variable strain equal "(lx - v_L0)/v_L0"
+variable strain1 equal "(ly - v_L1)/v_L1"
+variable strain2 equal "(lz - v_L2)/v_L2"
+variable strain3 equal "xz"
+variable strain4 equal "yz"
+variable strain5 equal "xy"
+variable xstrain equal "v_strain"
+variable xstress equal "-pxx/10000"
+variable ystress equal "-pyy/10000"
+variable zstress equal "-pzz/10000"
+variable xystress equal "-pxy/10000"
+variable xzstress equal "-pxz/10000"
+variable yzstress equal "-pyz/10000"
+variable ystrain equal "v_strain1"
+variable zstrain equal "v_strain2"
+variable xzstrain equal "v_strain3"
+variable yzstrain equal "v_strain4"
+variable xystrain equal "v_strain5"
+variable yforce equal "c_cyforce"
+variable xforce equal "c_cxforce"
+variable zforce equal "c_czforce"
+
+
+				   
+fix fadf all ave/time 1 1 1 c_cadf[*] file short_rerun0.05.adf mode vector 
+
+
+variable atmxstrs atom c_peratom[1]/(c_cvoro[1]*10000)
+variable atmystrs atom c_peratom[2]/(c_cvoro[1]*10000)
+variable atmzstrs atom c_peratom[3]/(c_cvoro[1]*10000)
+variable atmxystrs atom c_peratom[4]/(c_cvoro[1]*10000)
+variable atmxzstrs atom c_peratom[5]/(c_cvoro[1]*10000)
+variable atmyzstrs atom c_peratom[6]/(c_cvoro[1]*10000)
+variable vvoro atom c_cvoro[1]
+#variable atmpstrs atom "(v_atmxstrs + v_atmystrs + v_atmzstrs)/(3*v_vvoro*10000)"
+variable atmpstrs atom "(c_peratom[1] + c_peratom[2] + c_peratom[3])/(3*c_cvoro[1]*10000)"
+
+
+
+######################### dumps and runs
+
+
+
+
+run 0
+write_data hBN.*.rerun.data nocoeff
+unfix fadf
+################################################  RERUN
+
+read_dump hBNtensile.0.atom 0 x y z box yes replace yes format native
+
+
+#######################################################
+
+
+# Output strain and stress info to file
+# for units metal, pressure is in [bars] = 100 [kPa] = 1/10000 [GPa]
+# p2, p3, p4 are in GPa
+variable strain equal "(lx - v_L0)/v_L0"
+variable strain1 equal "(ly - v_L1)/v_L1"
+variable strain2 equal "(lz - v_L2)/v_L2"
+variable strain3 equal "xz"
+variable strain4 equal "yz"
+variable strain5 equal "xy"
+variable xstrain equal "v_strain"
+variable xstress equal "-pxx/10000"
+variable ystress equal "-pyy/10000"
+variable zstress equal "-pzz/10000"
+variable xystress equal "-pxy/10000"
+variable xzstress equal "-pxz/10000"
+variable yzstress equal "-pyz/10000"
+variable ystrain equal "v_strain1"
+variable zstrain equal "v_strain2"
+variable xzstrain equal "v_strain3"
+variable yzstrain equal "v_strain4"
+variable xystrain equal "v_strain5"
+variable yforce equal "c_cyforce"
+variable xforce equal "c_cxforce"
+variable zforce equal "c_czforce"
+
+
+				   
+fix fadf all ave/time 1 1 1 c_cadf[*] file short_rerun0.adf mode vector 
+
+fix frdf all ave/time 1 1 1 c_crdf[*] file short_rerun0.rdf mode vector 
+
+
+variable atmxstrs atom c_peratom[1]/(c_cvoro[1]*10000)
+variable atmystrs atom c_peratom[2]/(c_cvoro[1]*10000)
+variable atmzstrs atom c_peratom[3]/(c_cvoro[1]*10000)
+variable atmxystrs atom c_peratom[4]/(c_cvoro[1]*10000)
+variable atmxzstrs atom c_peratom[5]/(c_cvoro[1]*10000)
+variable atmyzstrs atom c_peratom[6]/(c_cvoro[1]*10000)
+variable vvoro atom c_cvoro[1]
+#variable atmpstrs atom "(v_atmxstrs + v_atmystrs + v_atmzstrs)/(3*v_vvoro*10000)"
+variable atmpstrs atom "(c_peratom[1] + c_peratom[2] + c_peratom[3])/(3*c_cvoro[1]*10000)"
+
+
+
+######################### dumps and runs
+
+run 0
+write_data hBN.*.rerun.data nocoeff
+unfix fadf
+unfix frdf
+
+
+
+
+
+

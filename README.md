@@ -1,1 +1,2 @@
 # hBN-crack-initiation
+This repository contains 'sample' LAMMPS simulation input scripts, various python post processing scripts, and other key files, including intial atomistic model of hBN that work as input for the different scripts - which are part of my project to analyze the 'principal' stress concentration and maximum bond strength in the hBN model at the onset of failure under tensile test.

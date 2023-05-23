@@ -1,3 +1,9 @@
+Cite as
+
+Lahkar, S., Jeong, B., Wang, X., Hemker, K., & Reddy, K. M. (2022). Intrinsic strengthening and toughening in hexagonal boron nitride by ripples. Acta Materialia, 229, 117845.
+
+Report any bugs/issues to simantalahkar@hotmail.com
+
 # hBN-crack-initiation
 This repository contains 'sample' LAMMPS input scripts for molecular dunamics simulation and stress field analysis, various python post processing scripts, and other key files, including initial atomistic model of hBN that work as input for the different scripts - which are part of my project to analyze the 'principal' stress concentration, structural distortion, and maximum bond strength in the hBN model at the onset of failure under tensile test.
 The files are as follows:

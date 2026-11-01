@@ -5,7 +5,10 @@ Lahkar, S., Jeong, B., Wang, X., Hemker, K., & Reddy, K. M. (2022). Intrinsic st
 Report any bugs/issues to simantalahkar@hotmail.com
 
 # hBN-crack-initiation
-This repository contains 'sample' LAMMPS input scripts for molecular dunamics simulation and stress field analysis, various python post processing scripts, and other key files, including initial atomistic model of hBN that work as input for the different scripts - which are part of my project to analyze the 'principal' stress concentration, structural distortion, and maximum bond strength in the hBN model at the onset of failure under tensile test.
+
+> **Legacy research code from my PhD (2019–2022), not maintained.** Kept so the analysis behind the paper cited above can be followed.
+
+This repository contains 'sample' LAMMPS input scripts for molecular dynamics simulation and stress field analysis, various python post processing scripts, and other key files, including initial atomistic model of hBN that work as input for the different scripts - which are part of my project to analyze the 'principal' stress concentration, structural distortion, and maximum bond strength in the hBN model at the onset of failure under tensile test.
 The files are as follows:
 
 A) LAMMPS input scripts: full.in, rerun.in, reruncheck.in
